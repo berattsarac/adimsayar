@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Adım & Rakım Takipçisi</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: #090d16; color: #f1f5f9; padding: 14px; display: flex; justify-content: center; }
+    .container { width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 14px; }
+
+    .card { background: #131c2e; border: 1px solid #1e293b; border-radius: 18px; padding: 18px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+    .card-title { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #38bdf8; margin-bottom: 12px; }
+
+    .step-box { text-align: center; padding: 6px 0; }
+    .step-val { font-size: 3.8rem; font-weight: 900; line-height: 1; color: #f8fafc; }
+    .step-lbl { font-size: 0.85rem; color: #64748b; margin-top: 4px; text-transform: uppercase; }
+
+    .grid-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0; }
+    .stat-cell { background: #0b1120; border: 1px solid #1e293b; border-radius: 12px; padding: 12px; text-align: center; }
+    .stat-num { font-size: 1.25rem; font-weight: 800; color: #38bdf8; }
+    .stat-num.alt { color: #34d399; }
+    .stat-num.warn { color: #f43f5e; }
+    .stat-lbl { font-size: 0.7rem; color: #94a3b8; margin-top: 4px; text-transform: uppercase; }
+
+    .btn-row { display: flex; gap: 10px; }
+    .btn { flex: 1; padding: 15px; border-radius: 12px; font-size: 1rem; font-weight: 700; border: none; cursor: pointer; }
+    .btn-start { background: #10b981; color: #022c22; }
+    .btn-stop { background: #ef4444; color: #ffffff; }
+    .btn-save { background: #38bdf8; color: #082f49; }
+    .btn-del { background: #334155; color: #cbd5e1; font-size: 0.75rem; padding: 6px 10px; border-radius: 6px; border: none; cursor: pointer; }
+
+    .status-box { font-size: 0.75rem; color: #94a3b8; text-align: center; margin-top: 8px; background: #0b1120; padding: 8px; border-radius: 8px; }
+
+    .table-stats { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 6px; }
+    .table-stats th, .table-stats td { padding: 9px 4px; border-bottom: 1px solid #1e293b; }
+    .table-stats th { color: #64748b; font-weight: 600; text-align: left; }
+    .table-stats td:not(:first-child), .table-stats th:not(:first-child) { text-align: right; }
+    .table-tag { font-weight: 700; color: #38bdf8; }
+
+    .author { text-align: center; font-size: 0.8rem; color: #64748b; margin-top: 4px; }
+    .author span { color: #38bdf8; font-weight: 700; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <div class="card">
+    <div class="card-title">Canlı Aktivite (Android)</div>
+    <div class="step-box">
+      <div class="step-val" id="dispSteps">0</div>
+      <div class="step-lbl">Adım</div>
+    </div>
+
+    <div class="grid-stats">
+      <div class="stat-cell">
+        <div class="stat-num" id="dispDist">0.00</div>
+        <div class="stat-lbl">Mesafe (km)</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-num" id="dispTime">00:00</div>
+        <div class="stat-lbl">Süre</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-num" id="dispAvgSpeed">0.0</div>
+        <div class="stat-lbl">Ort. Hız (km/s)</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-num warn" id="dispMaxSpeed">0.0</div>
+        <div class="stat-lbl">Maks Hız (km/s)</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-num alt" id="dispAlt">--</div>
+        <div class="stat-lbl">Rakım (m)</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-num alt" id="dispAsc">0</div>
+        <div class="stat-lbl">Tırmanış (m)</div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button type="button" class="btn btn-start" id="btnToggle">BAŞLAT</button>
+      <button type="button" class="btn btn-save" id="btnSave" style="display: none;">BİTİR & KAYDET</button>
+    </div>
+    <div class="status-box" id="dispStatus">Hazır. Başlat'a dokunun.</div>
+  </div>
+
+  <div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+      <div class="card-title" style="margin-bottom:0;">İstatistikler & Hafıza</div>
+      <button type="button" class="btn-del" id="btnClearHistory">Sıfırla</button>
+    </div>
+
+    <table class="table-stats">
+      <thead>
+        <tr>
+          <th>Dönem</th>
+          <th>Ort. Adım</th>
+          <th>Ort. Mesafe</th>
+          <th>Ort. Hız</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="table-tag">Haftalık (7G)</td>
+          <td id="avgWeekSteps">0</td>
+          <td id="avgWeekDist">0.0 km</td>
+          <td id="avgWeekSpeed">0.0 km/s</td>
+        </tr>
+        <tr>
+          <td class="table-tag">Aylık (30G)</td>
+          <td id="avgMonthSteps">0</td>
+          <td id="avgMonthDist">0.0 km</td>
+          <td id="avgMonthSpeed">0.0 km/s</td>
+        </tr>
+        <tr>
+          <td class="table-tag">Tüm Zamanlar</td>
+          <td id="avgTotalSteps">0</td>
+          <td id="avgTotalDist">0.0 km</td>
+          <td id="avgTotalSpeed">0.0 km/s</td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="font-size: 0.72rem; color: #64748b; text-align: right; margin-top: 8px;" id="countRecords">0 kayıtlı antrenman</div>
+  </div>
+
+  <div class="author">Geliştirici: <span>@HtSarac</span></div>
+
+</div>
+
+<script>
+  let isRunning = false;
+  let steps = 0;
+  let durationSec = 0;
+  let timerRef = null;
+
+  let maxSpeed = 0;
+  let prevLat = null;
+  let prevLon = null;
+  let gpsMeters = 0;
+
+  let currAlt = null;
+  let prevAlt = null;
+  let totalAscent = 0;
+
+  let geoWatchId = null;
+  let lastMag = 0;
+  let lastStepTime = 0;
+
+  const dispSteps = document.getElementById('dispSteps');
+  const dispDist = document.getElementById('dispDist');
+  const dispTime = document.getElementById('dispTime');
+  const dispAvgSpeed = document.getElementById('dispAvgSpeed');
+  const dispMaxSpeed = document.getElementById('dispMaxSpeed');
+  const dispAlt = document.getElementById('dispAlt');
+  const dispAsc = document.getElementById('dispAsc');
+  const btnToggle = document.getElementById('btnToggle');
+  const btnSave = document.getElementById('btnSave');
+  const dispStatus = document.getElementById('dispStatus');
+
+  function haversine(lat1, lon1, lat2, lon2) {
+    const R = 6371e3;
+    const p1 = lat1 * Math.PI / 180;
+    const p2 = lat2 * Math.PI / 180;
+    const dp = (lat2 - lat1) * Math.PI / 180;
+    const dl = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dp/2) * Math.sin(dp/2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl/2) * Math.sin(dl/2);
+    return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+  }
+
+  // Android İvmeölçer Dinleyicisi
+  function handleMotion(e) {
+    const a = e.accelerationIncludingGravity || e.acceleration;
+    if (!a) return;
+
+    const x = a.x || 0;
+    const y = a.y || 0;
+    const z = a.z || 0;
+    const mag = Math.sqrt(x*x + y*y + z*z);
+    const now = Date.now();
+
+    // Adım Algılama Eşiği (Normal yerçekimi 9.8 m/s² civarıdır)
+    if (mag > 11.2 && lastMag <= 11.2) {
+      if (now - lastStepTime > 280) {
+        steps++;
+        lastStepTime = now;
+        refreshScreen();
+      }
+    }
+    lastMag = mag;
+  }
+
+  // Android GPS Dinleyicisi
+  function handleGeo(pos) {
+    const c = pos.coords;
+    if (c.altitude !== null && !isNaN(c.altitude)) {
+      currAlt = Math.round(c.altitude);
+      if (prevAlt !== null) {
+        const diff = currAlt - prevAlt;
+        if (diff > 1.2) totalAscent += diff;
+      }
+      prevAlt = currAlt;
+    }
+
+    if (c.speed !== null && c.speed > 0) {
+      const spdKmh = c.speed * 3.6;
+      if (spdKmh > maxSpeed) maxSpeed = spdKmh;
+    }
+
+    if (prevLat !== null && prevLon !== null) {
+      const d = haversine(prevLat, prevLon, c.latitude, c.longitude);
+      if (d > 2.5) gpsMeters += d;
+    }
+    prevLat = c.latitude;
+    prevLon = c.longitude;
+
+    refreshScreen();
+  }
+
+  function refreshScreen() {
+    dispSteps.textContent = steps;
+
+    const m = String(Math.floor(durationSec / 60)).padStart(2, '0');
+    const s = String(durationSec % 60).padStart(2, '0');
+    dispTime.textContent = `${m}:${s}`;
+
+    const distKm = gpsMeters > 15 ? (gpsMeters / 1000) : (steps * 0.75 / 1000);
+    dispDist.textContent = distKm.toFixed(2);
+
+    const hrs = durationSec / 3600;
+    const avg = hrs > 0 ? (distKm / hrs) : 0;
+    dispAvgSpeed.textContent = avg.toFixed(1);
+    dispMaxSpeed.textContent = maxSpeed.toFixed(1);
+
+    dispAlt.textContent = currAlt !== null ? currAlt : '--';
+    dispAsc.textContent = Math.round(totalAscent);
+  }
+
+  function startTracking() {
+    isRunning = true;
+    btnToggle.textContent = 'DURDUR';
+    btnToggle.className = 'btn btn-stop';
+    btnSave.style.display = 'block';
+    dispStatus.textContent = 'Takip aktif. Adım ve sensörler dinleniyor.';
+
+    // Android'de doğrudan dinleyici eklenir
+    window.addEventListener('devicemotion', handleMotion, false);
+
+    if (navigator.geolocation) {
+      geoWatchId = navigator.geolocation.watchPosition(
+        handleGeo,
+        (err) => { 
+          dispStatus.textContent = 'Konum Uyarısı: ' + err.message; 
+        },
+        { enableHighAccuracy: true, maximumAge: 1000 }
+      );
+    }
+
+    clearInterval(timerRef);
+    timerRef = setInterval(() => {
+      durationSec++;
+      refreshScreen();
+    }, 1000);
+  }
+
+  function stopTracking() {
+    isRunning = false;
+    btnToggle.textContent = 'DEVAM ET';
+    btnToggle.className = 'btn btn-start';
+    dispStatus.textContent = 'Duraklatıldı.';
+
+    window.removeEventListener('devicemotion', handleMotion, false);
+    if (geoWatchId !== null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(geoWatchId);
+      geoWatchId = null;
+    }
+    clearInterval(timerRef);
+  }
+
+  btnToggle.onclick = function() {
+    if (!isRunning) startTracking();
+    else stopTracking();
+  };
+
+  btnSave.onclick = function() {
+    stopTracking();
+
+    const distKm = gpsMeters > 15 ? (gpsMeters / 1000) : (steps * 0.75 / 1000);
+    const hrs = durationSec / 3600;
+    const avg = hrs > 0 ? (distKm / hrs) : 0;
+
+    const record = {
+      date: Date.now(),
+      steps: steps,
+      dist: distKm,
+      avgSpeed: avg
+    };
+
+    const history = JSON.parse(localStorage.getItem('user_workouts') || '[]');
+    history.push(record);
+    localStorage.setItem('user_workouts', JSON.stringify(history));
+
+    steps = 0;
+    durationSec = 0;
+    maxSpeed = 0;
+    gpsMeters = 0;
+    totalAscent = 0;
+    prevLat = null;
+    prevLon = null;
+    prevAlt = null;
+
+    btnSave.style.display = 'none';
+    btnToggle.textContent = 'BAŞLAT';
+    dispStatus.textContent = 'Antrenman kaydedildi.';
+
+    refreshScreen();
+    calcAverages();
+  };
+
+  function calcAverages() {
+    const list = JSON.parse(localStorage.getItem('user_workouts') || '[]');
+    const now = Date.now();
+    const dayMs = 86400000;
+
+    document.getElementById('countRecords').textContent = `${list.length} kayıtlı antrenman`;
+
+    function getStats(arr) {
+      if (!arr.length) return { s: 0, d: '0.0', sp: '0.0' };
+      const s = Math.round(arr.reduce((a, b) => a + b.steps, 0) / arr.length);
+      const d = (arr.reduce((a, b) => a + b.dist, 0) / arr.length).toFixed(2);
+      const sp = (arr.reduce((a, b) => a + b.avgSpeed, 0) / arr.length).toFixed(1);
+      return { s, d, sp };
+    }
+
+    const w = getStats(list.filter(item => now - item.date <= 7 * dayMs));
+    const m = getStats(list.filter(item => now - item.date <= 30 * dayMs));
+    const t = getStats(list);
+
+    document.getElementById('avgWeekSteps').textContent = w.s;
+    document.getElementById('avgWeekDist').textContent = `${w.d} km`;
+    document.getElementById('avgWeekSpeed').textContent = `${w.sp} km/s`;
+
+    document.getElementById('avgMonthSteps').textContent = m.s;
+    document.getElementById('avgMonthDist').textContent = `${m.d} km`;
+    document.getElementById('avgMonthSpeed').textContent = `${m.sp} km/s`;
+
+    document.getElementById('avgTotalSteps').textContent = t.s;
+    document.getElementById('avgTotalDist').textContent = `${t.d} km`;
+    document.getElementById('avgTotalSpeed').textContent = `${t.sp} km/s`;
+  }
+
+  document.getElementById('btnClearHistory').onclick = function() {
+    if (confirm('Tüm geçmiş silinsin mi?')) {
+      localStorage.removeItem('user_workouts');
+      calcAverages();
+    }
+  };
+
+  calcAverages();
+</script>
+</body>
+</html>
