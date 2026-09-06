@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Adım Sayar - Test & Teşhis</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: #090d16; color: #f1f5f9; padding: 14px; display: flex; justify-content: center; }
+    .box { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 12px; }
+    
+    .card { background: #131c2e; border: 1px solid #1e293b; border-radius: 16px; padding: 16px; text-align: center; }
+    .steps { font-size: 3.5rem; font-weight: 900; color: #38bdf8; }
+    
+    .btn { width: 100%; padding: 15px; border-radius: 12px; font-size: 1rem; font-weight: 700; border: none; cursor: pointer; }
+    .btn-start { background: #10b981; color: #022c22; }
+    .btn-stop { background: #ef4444; color: #fff; }
+
+    /* Canlı Teşhis / Debug Kutusu */
+    .debug-box { background: #000; border: 1px solid #334155; border-radius: 12px; padding: 12px; font-family: monospace; font-size: 0.8rem; text-align: left; line-height: 1.6; color: #a5f3fc; }
+    .warn { color: #f87171; font-weight: bold; }
+    .ok { color: #4ade80; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+<div class="box">
+  <div class="card">
+    <div style="font-size: 0.8rem; color: #94a3b8; text-transform: uppercase;">Adım</div>
+    <div class="steps" id="dispSteps">0</div>
+    <div style="margin-top: 8px; font-size: 0.9rem;">
+      Süre: <span id="dispTimer" style="color: #38bdf8;">00:00</span> | 
+      Mesafe: <span id="dispDist" style="color: #38bdf8;">0.00</span> km
+    </div>
+  </div>
+
+  <button class="btn btn-start" id="mainBtn">BAŞLAT</button>
+
+  <div class="debug-box">
+    <div style="border-bottom: 1px solid #334155; padding-bottom: 4px; margin-bottom: 6px; font-weight: bold; color: #fff;">
+      CANLI SENSÖR TEŞHİSİ
+    </div>
+    <div>Protokol: <span id="diagProto">...</span></div>
+    <div>İvmeölçer Olayı: <span id="diagMotion">Dinlenmiyor</span></div>
+    <div>Ham İvme (G): <span id="diagG">0.00</span> m/s²</div>
+    <div>GPS Durumu: <span id="diagGPS">Bekleniyor</span></div>
+    <div>Enlem/Boylam: <span id="diagCoords">-- , --</span></div>
+    <div>Rakım: <span id="diagAlt">--</span> m</div>
+    <div>Son Uyarı/Hata: <span id="diagErr" style="color: #fbbf24;">Yok</span></div>
+  </div>
+
+  <div style="text-align:center; font-size: 0.8rem; color: #64748b;">@HtSarac</div>
+</div>
+
+<script>
+  let active = false;
+  let stepCount = 0;
+  let secs = 0;
+  let timer = null;
+
+  let lastMagnitude = 0;
+  let lastHit = 0;
+  let motionEventsCount = 0;
+
+  // DOM
+  const dispSteps = document.getElementById('dispSteps');
+  const dispTimer = document.getElementById('dispTimer');
+  const dispDist = document.getElementById('dispDist');
+  const mainBtn = document.getElementById('mainBtn');
+
+  const diagProto = document.getElementById('diagProto');
+  const diagMotion = document.getElementById('diagMotion');
+  const diagG = document.getElementById('diagG');
+  const diagGPS = document.getElementById('diagGPS');
+  const diagCoords = document.getElementById('diagCoords');
+  const diagAlt = document.getElementById('diagAlt');
+  const diagErr = document.getElementById('diagErr');
+
+  // Protokol Kontrolü
+  if (location.protocol === 'https:' || location.hostname === 'localhost') {
+    diagProto.innerHTML = '<span class="ok">GÜVENLİ (HTTPS)</span>';
+  } else {
+    diagProto.innerHTML = '<span class="warn">GÜVENSİZ (HTTP/FILE) - Sensörler engellenir!</span>';
+    diagErr.textContent = 'Sayfa HTTPS üzerinde değil. Sensörler açılamaz.';
+  }
+
+  // İvme Algılama
+  function onMotion(e) {
+    motionEventsCount++;
+    diagMotion.innerHTML = `<span class="ok">Tetikleniyor (${motionEventsCount})</span>`;
+
+    const a = e.accelerationIncludingGravity || e.acceleration;
+    if (!a) {
+      diagErr.textContent = 'Sensör verisi boş döndü.';
+      return;
+    }
+
+    const x = a.x || 0;
+    const y = a.y || 0;
+    const z = a.z || 0;
+    const mag = Math.sqrt(x*x + y*y + z*z);
+
+    diagG.textContent = mag.toFixed(2);
+
+    // Eşik değer kontrolü (normal yerçekimi ~9.8 m/s² üzerindeki adımlar)
+    const now = Date.now();
+    if (mag > 11.2 && lastMagnitude <= 11.2) {
+      if (now - lastHit > 280) {
+        stepCount++;
+        lastHit = now;
+        dispSteps.textContent = stepCount;
+        dispDist.textContent = ((stepCount * 0.75) / 1000).toFixed(2);
+      }
+    }
+    lastMagnitude = mag;
+  }
+
+  let geoWatch = null;
+
+  async function start() {
+    diagErr.textContent = 'Başlatılıyor...';
+
+    // 1. iOS İzin İsteme (Sadece iOS'ta pencere açar)
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+      try {
+        const state = await DeviceMotionEvent.requestPermission();
+        if (state !== 'granted') {
+          diagErr.textContent = 'iOS Sensör izni REDDEDİLDİ.';
+          return;
+        }
+      } catch (err) {
+        diagErr.textContent = 'İzin tetikleme hatası: ' + err.message;
+        return;
+      }
+    }
+
+    // 2. İvmeölçeri Başlat
+    try {
+      window.addEventListener('devicemotion', onMotion, true);
+    } catch(err) {
+      diagErr.textContent = 'İvmeölçer açılamadı: ' + err.message;
+    }
+
+    // 3. GPS Başlat
+    if (navigator.geolocation) {
+      diagGPS.textContent = 'Konum aranıyor...';
+      geoWatch = navigator.geolocation.watchPosition(
+        (pos) => {
+          diagGPS.innerHTML = '<span class="ok">Bağlandı</span>';
+          diagCoords.textContent = `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`;
+          diagAlt.textContent = pos.coords.altitude !== null ? Math.round(pos.coords.altitude) : '--';
+        },
+        (err) => {
+          diagGPS.innerHTML = `<span class="warn">Hata: ${err.message}</span>`;
+          diagErr.textContent = 'GPS hatası: ' + err.message;
+        },
+        { enableHighAccuracy: true }
+      );
+    } else {
+      diagGPS.textContent = 'Cihazda GPS yok.';
+    }
+
+    // 4. Sayaç
+    timer = setInterval(() => {
+      secs++;
+      const m = String(Math.floor(secs / 60)).padStart(2, '0');
+      const s = String(secs % 60).padStart(2, '0');
+      dispTimer.textContent = `${m}:${s}`;
+    }, 1000);
+
+    active = true;
+    mainBtn.textContent = 'DURDUR';
+    mainBtn.className = 'btn btn-stop';
+    diagErr.textContent = 'Çalışıyor... Telefonu salla veya yürü.';
+  }
+
+  function stop() {
+    active = false;
+    mainBtn.textContent = 'BAŞLAT';
+    mainBtn.className = 'btn btn-start';
+    window.removeEventListener('devicemotion', onMotion, true);
+    if (geoWatch) navigator.geolocation.clearWatch(geoWatch);
+    clearInterval(timer);
+    diagMotion.textContent = 'Durduruldu';
+    diagGPS.textContent = 'Durduruldu';
+  }
+
+  mainBtn.onclick = () => {
+    if (!active) start();
+    else stop();
+  };
+</script>
+</body>
+</html>
